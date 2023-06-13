@@ -48,7 +48,7 @@ class AngularKernel:
         mask = self._get_min_dists_mask(dists, d_max, k_max)
 
         # Get bvalue differences
-        bval_diff = self._get_bval_diff(norm_ang_in, norm_ang_out)
+        bval_diff = self._get_bval_component(norm_ang_in, norm_ang_out)
 
         # Get r_out
         p_ang = torch.cat([dists.unsqueeze(-1), bval_diff], dim=-1)
@@ -104,7 +104,7 @@ class AngularKernel:
         return dists, ang_in_idx
 
     @staticmethod
-    def _get_bval_diff(norm_ang_in: torch.Tensor, norm_ang_out: torch.Tensor) -> torch.Tensor:
+    def _get_bval_component(norm_ang_in: torch.Tensor, norm_ang_out: torch.Tensor) -> torch.Tensor:
         '''Gets relative difference in bvalues / 1000
 
         Args:
@@ -155,7 +155,7 @@ class AngularKernel:
 
 class PCConv(torch.nn.Module):
     '''Parametric Continuous Convolution
-
+    # TODO
     Args:
     '''
 
@@ -265,7 +265,7 @@ class PCConv(torch.nn.Module):
         return None
 
     def _get_angular_kernel_gen(self):
-        return AngularKernel(self.kernel, self.nsdims)
+        return AngularKernel()
 
     def _set_runtime_shapes(
         self, ang_in: torch.Tensor, ang_out: torch.Tensor, f_in: torch.Tensor
@@ -501,11 +501,11 @@ class PCConv(torch.nn.Module):
                 shape -> (B, q_out, 3) where last dimension has
                     cartesian co-ords (x, y, z)
             f_in: Input feature map
-                shape -> (B, N, q_in, C_in), where N are the `d` input spatial
+                shape -> (B, N, q_in, C), where N are the `d` input spatial
                 dimensions (Typically 3 though any are supported)
 
         Returns:
-            f_out: Output feature map, shape -> (B, M, q_out, S),
+            f_out: Output feature map, shape -> (B, M, q_out, K),
                 where M are the `d` output spatial dimensions.
         '''
         self._set_runtime_shapes(ang_in, ang_out, f_in)
@@ -527,5 +527,111 @@ class PCConv(torch.nn.Module):
         return f_out
 
 
-class FactorisedPCConv(torch.nn.Module):
-    '''Factorised Parametric Continuous Convolution'''
+class PCConvFactorised(torch.nn.Module):
+    '''PCConv factorised into 4 sequential operations sharing one Hypernetwork'''
+
+    nsphdims = 2
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_len: int,
+        k_max: Optional[int] = None,
+        hidden_layers: Tuple[int, ...] = (32, 64),
+        d_max: float = 1.0,
+        lnum: int = 5,
+    ) -> None:
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.k_max = k_max
+        self.hidden_layers = hidden_layers
+        self.d_max = d_max
+        self.lnum = lnum
+        self.nsdims = 3
+        self.weightnet = self._get_weightnet()
+        self.feature_layer = self._get_feature_layer()
+        self.bias = self._get_bias()
+
+        self.pcconv1 = self.pcconv_class(
+            self.in_channels,
+            self.in_channels,
+            (kernel_len, 1, 1),
+            k_max=1,
+            weightnet=self.weightnet,
+            feature_layer=torch.nn.Identity(),
+            bias=False,
+        )
+        self.pcconv2 = self.pcconv_class(
+            self.in_channels,
+            self.in_channels,
+            (1, kernel_len, 1),
+            k_max=1,
+            weightnet=self.weightnet,
+            feature_layer=torch.nn.Identity(),
+            bias=False,
+        )
+        self.pcconv3 = self.pcconv_class(
+            self.in_channels,
+            self.in_channels,
+            (1, 1, kernel_len),
+            k_max=1,
+            weightnet=self.weightnet,
+            feature_layer=torch.nn.Identity(),
+            bias=False,
+        )
+        self.pcconv4 = self.pcconv_class(
+            self.in_channels,
+            self.out_channels,
+            (1, 1, 1),
+            k_max=self.k_max,
+            d_max=self.d_max,
+            weightnet=self.weightnet,
+            feature_layer=self.feature_layer,
+            bias=self.bias,
+        )
+
+    def forward(self, ang_in, ang_out, f_in):
+        '''Forward pass of factorised parametric continuous convolution
+
+        Args:
+            ang_in: Input angular co-ordinates,
+                shape -> (B, q_in, 3) where last dimension has
+                    cartesian co-ords (x, y, z)
+            ang_out: Output angular co-ordinates,
+                shape -> (B, q_out, 3) where last dimension has
+                    cartesian co-ords (x, y, z)
+            f_in: Input feature map
+                shape -> (B, N, q_in, C_in), where N are the `d` input spatial
+                dimensions (Typically 3 though any are supported)
+
+        Returns:
+            f_out: Output feature map, shape -> (B, M, q_out, S),
+                where M are the `d` output spatial dimensions.
+        '''
+        f_out = self.pcconv1(ang_in, ang_in, f_in)
+        f_out = self.pcconv2(ang_in, ang_in, f_out)
+        f_out = self.pcconv3(ang_in, ang_in, f_out)
+        f_out = self.pcconv4(ang_in, ang_out, f_out)
+
+        return f_out
+
+    @property
+    def pcconv_class(self):
+        '''PCConv class used as inner layers'''
+        return PCConv
+
+    def _get_weightnet(self):
+        return WeightNet(
+            *self.hidden_layers,
+            self.in_channels,
+            lnum=self.lnum,
+            ndims=self.nsdims + self.nsphdims,
+        )
+
+    def _get_feature_layer(self):
+        return torch.nn.Linear(self.in_channels, self.out_channels, bias=False)
+
+    def _get_bias(self):
+        return torch.nn.parameter.Parameter(torch.zeros(self.out_channels))

@@ -29,7 +29,7 @@ class WeightNet(torch.nn.Module):
             hlayer_nl: Non-linear activation for the hidden
                 layers. Default: torch.nn.LeakyReLU with negative_slope=0.1
             final_nl: Non-linear activation for the final
-                layer. Default: torch.nn.Tanh
+                layer. Default: torch.nn.Identity
         '''
         super().__init__()
         self.ndims = ndims
