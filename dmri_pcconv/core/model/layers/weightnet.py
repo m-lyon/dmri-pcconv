@@ -1,7 +1,6 @@
 '''PCConv Layers'''
 
-from functools import partial
-from typing import Optional
+from typing import Optional, Type
 
 import torch
 
@@ -14,8 +13,8 @@ class WeightNet(torch.nn.Module):
         *layer_sizes: int,
         ndims: int = 5,
         lnum: int = 10,
-        hlayer_nl: Optional[torch.nn.Module] = None,
-        final_nl: Optional[torch.nn.Module] = None
+        hlayer_nl: Optional[Type[torch.nn.Module]] = None,
+        final_nl: Optional[Type[torch.nn.Module]] = None
     ) -> None:
         '''Initialises WeightNet
 
@@ -34,15 +33,14 @@ class WeightNet(torch.nn.Module):
         super().__init__()
         self.ndims = ndims
         self.lnum = lnum
-        self.hlayer = self._assign_hlayer(hlayer_nl)
+        self.hlayer_nl = hlayer_nl
         self.final = torch.nn.Identity if final_nl is None else final_nl
         self.layers = self._init_layers(*layer_sizes)
 
-    @staticmethod
-    def _assign_hlayer(hlayer_nl: Optional[torch.nn.Module]) -> torch.nn.Module:
-        if hlayer_nl is not None:
-            return hlayer_nl
-        return partial(torch.nn.LeakyReLU, negative_slope=0.1)
+    def _init_hlayer(self) -> torch.nn.Module:
+        if self.hlayer_nl is not None:
+            return self.hlayer_nl()
+        return torch.nn.LeakyReLU(negative_slope=0.1)
 
     @property
     def coord_size(self) -> int:
@@ -57,7 +55,7 @@ class WeightNet(torch.nn.Module):
             else:
                 layer_list.append(torch.nn.Linear(self.coord_size, layer))
             if ldx < len(layer_sizes) - 1:
-                layer_list.append(self.hlayer())
+                layer_list.append(self._init_hlayer())
             else:
                 layer_list.append(self.final())
 

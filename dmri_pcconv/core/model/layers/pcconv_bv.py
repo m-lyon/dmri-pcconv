@@ -1,5 +1,7 @@
 '''PCConv-Bv variant'''
 
+from typing import Type
+
 import torch
 
 from dmri_pcconv.core.model.layers.pcconv import AngularKernel, PCConv, PCConvFactorised
@@ -33,7 +35,7 @@ class PCConvBv(PCConv):
 
     nsphdims = 3
 
-    def _get_angular_kernel_class(self):
+    def _get_angular_kernel_class(self) -> AngularKernelBv:
         return AngularKernelBv()
 
 
@@ -43,5 +45,5 @@ class PCConvBvFactorised(PCConvFactorised):
     nsphdims = 3
 
     @property
-    def pcconv_class(self):
+    def pcconv_class(self) -> Type[PCConvBv]:
         return PCConvBv

@@ -1,5 +1,5 @@
 '''Parametric continuous convolution with mean spatial encoding'''
-from typing import Optional
+from typing import Optional, Type
 
 import torch
 
@@ -11,18 +11,17 @@ class PCConvSp(PCConv):
     '''PCConv with mean spatial encoding'''
 
     def _get_weightnet(
-        self, weightnet: Optional[WeightNet], weightnet_final_nl: Optional[torch.nn.Module]
+        self, weightnet: Optional[WeightNet], weightnet_final_nl: Optional[Type[torch.nn.Module]]
     ) -> WeightNet:
         if weightnet is not None:
             return weightnet
-        final_nl = torch.nn.Identity if weightnet_final_nl is None else weightnet_final_nl
 
         return WeightNet(
             *self.hidden_layers,
             self.in_channels,
             lnum=self.lnum,
             ndims=(self.nsdims * 2) + self.nsphdims,
-            final_nl=final_nl,
+            final_nl=weightnet_final_nl,
         )
 
     def _expand_for_mean_spatial(self, r_out: torch.Tensor, sp_in: torch.Tensor) -> torch.Tensor:
@@ -43,7 +42,9 @@ class PCConvSp(PCConv):
         r_out = torch.concat([r_out, sp_out], dim=-1)
         return r_out
 
-    def forward(self, ang_in, ang_out, f_in, sp_in):
+    def forward(
+        self, ang_in: torch.Tensor, ang_out: torch.Tensor, f_in: torch.Tensor, sp_in: torch.Tensor
+    ) -> torch.Tensor:
         '''Forward pass of parametric continuous convolution
 
         Args:
@@ -87,10 +88,10 @@ class PCConvSpFactorised(PCConvFactorised):
     '''Factorised PCConv with mean spatial encoding'''
 
     @property
-    def pcconv_class(self):
+    def pcconv_class(self) -> Type[PCConvSp]:
         return PCConvSp
 
-    def _get_weightnet(self):
+    def _get_weightnet(self) -> WeightNet:
         return WeightNet(
             *self.hidden_layers,
             self.in_channels,
@@ -98,7 +99,9 @@ class PCConvSpFactorised(PCConvFactorised):
             ndims=(self.nsdims * 2) + self.nsphdims,
         )
 
-    def forward(self, ang_in, ang_out, f_in, sp_in):
+    def forward(
+        self, ang_in: torch.Tensor, ang_out: torch.Tensor, f_in: torch.Tensor, sp_in: torch.Tensor
+    ) -> torch.Tensor:
         '''Forward pass of factorised parametric continuous convolution
 
         Args:

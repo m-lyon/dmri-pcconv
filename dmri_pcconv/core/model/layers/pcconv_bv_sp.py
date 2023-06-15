@@ -1,5 +1,7 @@
 '''Parametric continuous convolution with bval modification and mean spatial encoding'''
 
+from typing import Type
+
 from dmri_pcconv.core.model.layers.pcconv_sp import PCConvSp, PCConvSpFactorised
 from dmri_pcconv.core.model.layers.pcconv_bv import AngularKernelBv
 
@@ -9,7 +11,7 @@ class PCConvBvSp(PCConvSp):
 
     nsphdims = 3
 
-    def _get_angular_kernel_class(self):
+    def _get_angular_kernel_class(self) -> AngularKernelBv:
         return AngularKernelBv()
 
 
@@ -21,5 +23,5 @@ class PCConvBvSpFactorised(PCConvSpFactorised):
     nsphdims = 3
 
     @property
-    def pcconv_class(self):
+    def pcconv_class(self) -> Type[PCConvBvSp]:
         return PCConvBvSp

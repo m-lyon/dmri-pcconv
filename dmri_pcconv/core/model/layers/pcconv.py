@@ -2,7 +2,7 @@
 
 import math
 
-from typing import Union, Tuple, Optional
+from typing import Union, Tuple, Optional, Type
 
 import torch
 
@@ -164,15 +164,15 @@ class PCConv(torch.nn.Module):
         in_channels: int,
         out_channels: int,
         spatial_kernel: Tuple[int, ...],
-        k_max: Optional[int] = None,
+        k_max: int = 0,
         hidden_layers: Tuple[int, ...] = (32, 64),
         d_max: float = 1.0,
         stride: Union[int, Tuple[int, ...], None] = None,
         padding: Union[str, int, Tuple[int, ...]] = 'same',
         return_coords: bool = False,
-        bias: bool = True,
+        bias: Union[bool, torch.nn.parameter.Parameter] = True,
         weightnet: Optional[WeightNet] = None,
-        weightnet_final_nl: Optional[torch.nn.Module] = None,
+        weightnet_final_nl: Optional[Type[torch.nn.Module]] = None,
         feature_layer: Optional[torch.nn.Module] = None,
         lnum: int = 5,
     ) -> None:
@@ -243,18 +243,17 @@ class PCConv(torch.nn.Module):
         raise ValueError(f'Unrecognised padding type: {type(padding)}')
 
     def _get_weightnet(
-        self, weightnet: Optional[WeightNet], weightnet_final_nl: Optional[torch.nn.Module]
+        self, weightnet: Optional[WeightNet], weightnet_final_nl: Optional[Type[torch.nn.Module]]
     ) -> WeightNet:
         if weightnet is not None:
             return weightnet
-        final_nl = torch.nn.Identity if weightnet_final_nl is None else weightnet_final_nl
 
         return WeightNet(
             *self.hidden_layers,
             self.in_channels,
             lnum=self.lnum,
             ndims=self.nsdims + self.nsphdims,
-            final_nl=final_nl,
+            final_nl=weightnet_final_nl,
         )
 
     def _get_bias(self, bias: Union[torch.nn.Parameter, bool]) -> Optional[torch.nn.Parameter]:
@@ -264,7 +263,7 @@ class PCConv(torch.nn.Module):
             return torch.nn.parameter.Parameter(torch.zeros(self.out_channels))
         return None
 
-    def _get_angular_kernel_gen(self):
+    def _get_angular_kernel_gen(self) -> AngularKernel:
         return AngularKernel()
 
     def _set_runtime_shapes(
@@ -285,7 +284,7 @@ class PCConv(torch.nn.Module):
         if self._shapes_set:
             return
         self.q_in, self.q_out = ang_in.size(1), ang_out.size(1)
-        if self.k_max is None:
+        if self.k_max == 0:
             self.k_max = ang_in.size(1)
         self.out_shape = self._get_output_shape(f_in)
         self._shapes_set = True
@@ -537,7 +536,7 @@ class PCConvFactorised(torch.nn.Module):
         in_channels: int,
         out_channels: int,
         kernel_len: int,
-        k_max: Optional[int] = None,
+        k_max: int = 0,
         hidden_layers: Tuple[int, ...] = (32, 64),
         d_max: float = 1.0,
         lnum: int = 5,
@@ -592,7 +591,9 @@ class PCConvFactorised(torch.nn.Module):
             bias=self.bias,
         )
 
-    def forward(self, ang_in, ang_out, f_in):
+    def forward(
+        self, ang_in: torch.Tensor, ang_out: torch.Tensor, f_in: torch.Tensor
+    ) -> torch.Tensor:
         '''Forward pass of factorised parametric continuous convolution
 
         Args:
@@ -603,11 +604,11 @@ class PCConvFactorised(torch.nn.Module):
                 shape -> (B, q_out, 3) where last dimension has
                     cartesian co-ords (x, y, z)
             f_in: Input feature map
-                shape -> (B, N, q_in, C_in), where N are the `d` input spatial
+                shape -> (B, N, q_in, C), where N are the `d` input spatial
                 dimensions (Typically 3 though any are supported)
 
         Returns:
-            f_out: Output feature map, shape -> (B, M, q_out, S),
+            f_out: Output feature map, shape -> (B, M, q_out, K),
                 where M are the `d` output spatial dimensions.
         '''
         f_out = self.pcconv1(ang_in, ang_in, f_in)
@@ -618,11 +619,11 @@ class PCConvFactorised(torch.nn.Module):
         return f_out
 
     @property
-    def pcconv_class(self):
+    def pcconv_class(self) -> Type[PCConv]:
         '''PCConv class used as inner layers'''
         return PCConv
 
-    def _get_weightnet(self):
+    def _get_weightnet(self) -> WeightNet:
         return WeightNet(
             *self.hidden_layers,
             self.in_channels,
@@ -630,8 +631,8 @@ class PCConvFactorised(torch.nn.Module):
             ndims=self.nsdims + self.nsphdims,
         )
 
-    def _get_feature_layer(self):
+    def _get_feature_layer(self) -> torch.nn.Module:
         return torch.nn.Linear(self.in_channels, self.out_channels, bias=False)
 
-    def _get_bias(self):
+    def _get_bias(self) -> torch.nn.Parameter:
         return torch.nn.parameter.Parameter(torch.zeros(self.out_channels))
