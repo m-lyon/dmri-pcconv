@@ -4,6 +4,7 @@ from typing import Type, Tuple
 
 import torch
 
+from dmri_pcconv.core.model.lightning import BaseLightningModule
 from dmri_pcconv.core.model.layers.pcconv import PCConv, PCConvFactorised
 
 
@@ -213,3 +214,17 @@ class PCCNN(torch.nn.Module):
         dmri_out = a_out.squeeze(-1)
 
         return dmri_out
+
+
+class PCCNNLightningModel(BaseLightningModule):
+    '''PCCNN Lightning Model'''
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pccnn = PCCNN()
+
+    def forward(
+        self, dmri_in: torch.Tensor, bvec_in: torch.Tensor, bvec_out: torch.Tensor
+    ) -> torch.Tensor:
+        # pylint: disable=arguments-differ
+        return self.pccnn(dmri_in, bvec_in, bvec_out)

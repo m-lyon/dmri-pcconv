@@ -2,8 +2,11 @@
 
 from typing import Type
 
-from dmri_pcconv.core.model.layers.pcconv_bv_sp import PCConvBvSp, PCConvBvSpFactorised
+import torch
+
+from dmri_pcconv.core.model.lightning import BaseLightningModule
 from dmri_pcconv.core.model.pccnn_sp import PCCNNSp, PCConvSpBlock
+from dmri_pcconv.core.model.layers.pcconv_bv_sp import PCConvBvSp, PCConvBvSpFactorised
 
 
 class PCConvBvSpBlock(PCConvSpBlock):
@@ -32,3 +35,21 @@ class PCCNNBvSp(PCCNNSp):
     @property
     def pcconv_block_class(self) -> Type[PCConvBvSpBlock]:
         return PCConvBvSpBlock
+
+
+class PCCNNBvSpLightningModel(BaseLightningModule):
+    '''PCCNN-Bv-Sp Lightning Model'''
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pccnn = PCCNNBvSp()
+
+    def forward(
+        self,
+        dmri_in: torch.Tensor,
+        bvec_in: torch.Tensor,
+        bvec_out: torch.Tensor,
+        patch_pos: torch.Tensor,
+    ) -> torch.Tensor:
+        # pylint: disable=arguments-differ
+        return self.pccnn(dmri_in, bvec_in, bvec_out, patch_pos)

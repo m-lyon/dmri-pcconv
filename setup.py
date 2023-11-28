@@ -4,7 +4,7 @@
 from os import path
 from setuptools import setup, find_namespace_packages
 
-install_deps = ['torch', 'numpy']
+install_deps = ['torch', 'lightning', 'npy-patcher', 'einops', 'nibabel']
 
 version = '1.0.0'
 this_dir = path.abspath(path.dirname(__file__))

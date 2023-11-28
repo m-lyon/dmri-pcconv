@@ -5,6 +5,7 @@ import math
 from typing import Union, Tuple, Optional, Type
 
 import torch
+from torch.nn import functional as F
 
 from dmri_pcconv.core.utils.sphere import spherical_distance
 from dmri_pcconv.core.model.layers.weightnet import WeightNet
@@ -155,8 +156,21 @@ class AngularKernel:
 
 class PCConv(torch.nn.Module):
     '''Parametric Continuous Convolution
-    # TODO
+
     Args:
+        in_channels: Number of input channels
+        out_channels: Number of output channels
+        spatial_kernel: Spatial kernel size
+        k_max: Maximum number of q-space points to include within the kernel
+        hidden_layers: Hidden layer sizes for hypernetwork
+        d_max: Maximum angular distance to include within the kernel
+        stride: Stride of convolution
+        padding: Padding of convolution
+        bias: Whether to include bias in convolution
+        weightnet: WeightNet to use for generating weights
+        weightnet_final_nl: Final non-linearity to use in WeightNet
+        feature_layer: Feature layer to use to go from in_channels -> out_channels
+        lnum: Fourier Features L-factor used in WeightNet
     '''
 
     def __init__(
@@ -169,7 +183,6 @@ class PCConv(torch.nn.Module):
         d_max: float = 1.0,
         stride: Union[int, Tuple[int, ...], None] = None,
         padding: Union[str, int, Tuple[int, ...]] = 'same',
-        return_coords: bool = False,
         bias: Union[bool, torch.nn.parameter.Parameter] = True,
         weightnet: Optional[WeightNet] = None,
         weightnet_final_nl: Optional[Type[torch.nn.Module]] = None,
@@ -181,21 +194,24 @@ class PCConv(torch.nn.Module):
         self.out_channels = out_channels
         self.kernel = spatial_kernel
         self.nsdims = len(self.kernel)
-        self.nsphdims = 2
         self.k_max = k_max
         self.hidden_layers = hidden_layers
         self.d_max = d_max
+        self.lnum = lnum
         assert self.d_max <= math.pi / 2.0
         self.strides = self._get_strides(stride)
         self.padding = self._get_padding(padding)
-        self.return_coords = return_coords
         self._shapes_set = False
         self.q_in, self.q_out, self.out_shape = 0, 0, (0, 0, 0)
         self.weight_net = self._get_weightnet(weightnet, weightnet_final_nl)
         self.feature_layer = self._get_feature_layer(feature_layer)
         self.bias = self._get_bias(bias)
         self.ang_kernel = self._get_angular_kernel_gen()
-        self.lnum = lnum
+
+    @property
+    def nsphdims(self) -> int:
+        '''Number of angular dimensions within the kernel'''
+        return 2
 
     @staticmethod
     def conv_out_length(input_len: int, filter_len: int, lpad: int, rpad: int, stride: int) -> int:
@@ -427,7 +443,7 @@ class PCConv(torch.nn.Module):
         '''
 
         # Pad input feature map
-        f_in = torch.nn.functional.pad(f_in, (0,) * 4 + self.padding)  # type: ignore
+        f_in = F.pad(f_in, (0,) * 4 + self.padding)  # pylint: disable=not-callable
 
         # Reshape for kernels
         f_in = self._reshape_input_into_kernels(f_in)
@@ -529,8 +545,6 @@ class PCConv(torch.nn.Module):
 class PCConvFactorised(torch.nn.Module):
     '''PCConv factorised into 4 sequential operations sharing one Hypernetwork'''
 
-    nsphdims = 2
-
     def __init__(
         self,
         in_channels: int,
@@ -591,6 +605,30 @@ class PCConvFactorised(torch.nn.Module):
             bias=self.bias,
         )
 
+    @property
+    def nsphdims(self) -> int:
+        '''Number of angular dimensions within the kernel'''
+        return 2
+
+    @property
+    def pcconv_class(self) -> Type[PCConv]:
+        '''PCConv class used as inner layers'''
+        return PCConv
+
+    def _get_weightnet(self) -> WeightNet:
+        return WeightNet(
+            *self.hidden_layers,
+            self.in_channels,
+            lnum=self.lnum,
+            ndims=self.nsdims + self.nsphdims,
+        )
+
+    def _get_feature_layer(self) -> torch.nn.Module:
+        return torch.nn.Linear(self.in_channels, self.out_channels, bias=False)
+
+    def _get_bias(self) -> torch.nn.Parameter:
+        return torch.nn.parameter.Parameter(torch.zeros(self.out_channels))
+
     def forward(
         self, ang_in: torch.Tensor, ang_out: torch.Tensor, f_in: torch.Tensor
     ) -> torch.Tensor:
@@ -617,22 +655,3 @@ class PCConvFactorised(torch.nn.Module):
         f_out = self.pcconv4(ang_in, ang_out, f_out)
 
         return f_out
-
-    @property
-    def pcconv_class(self) -> Type[PCConv]:
-        '''PCConv class used as inner layers'''
-        return PCConv
-
-    def _get_weightnet(self) -> WeightNet:
-        return WeightNet(
-            *self.hidden_layers,
-            self.in_channels,
-            lnum=self.lnum,
-            ndims=self.nsdims + self.nsphdims,
-        )
-
-    def _get_feature_layer(self) -> torch.nn.Module:
-        return torch.nn.Linear(self.in_channels, self.out_channels, bias=False)
-
-    def _get_bias(self) -> torch.nn.Parameter:
-        return torch.nn.parameter.Parameter(torch.zeros(self.out_channels))

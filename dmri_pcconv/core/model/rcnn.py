@@ -139,7 +139,7 @@ class Decoder3D(torch.nn.Module):
         return out
 
 
-class RCNNModel(torch.nn.Module):
+class RCNN(torch.nn.Module):
     '''RCNN Model'''
 
     def __init__(

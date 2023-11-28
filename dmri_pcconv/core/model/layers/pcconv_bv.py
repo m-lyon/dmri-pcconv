@@ -33,7 +33,9 @@ class AngularKernelBv(AngularKernel):
 class PCConvBv(PCConv):
     '''Parametric Continuous Convolution with bval modification'''
 
-    nsphdims = 3
+    @property
+    def nsphdims(self) -> int:
+        return 3
 
     def _get_angular_kernel_class(self) -> AngularKernelBv:
         return AngularKernelBv()
@@ -42,7 +44,9 @@ class PCConvBv(PCConv):
 class PCConvBvFactorised(PCConvFactorised):
     '''Factorised Parametric Continuous Convolution with bval modification'''
 
-    nsphdims = 3
+    @property
+    def nsphdims(self) -> int:
+        return 3
 
     @property
     def pcconv_class(self) -> Type[PCConvBv]:

@@ -4,8 +4,9 @@ from typing import Type
 
 import torch
 
-from dmri_pcconv.core.model.layers.pcconv_sp import PCConvSp, PCConvSpFactorised
 from dmri_pcconv.core.model.pccnn import PCCNN, PCConvBlock
+from dmri_pcconv.core.model.lightning import BaseLightningModule
+from dmri_pcconv.core.model.layers.pcconv_sp import PCConvSp, PCConvSpFactorised
 
 
 class PCConvSpBlock(PCConvBlock):
@@ -119,3 +120,21 @@ class PCCNNSp(PCCNN):
         dmri_out = a_out.squeeze(-1)
 
         return dmri_out
+
+
+class PCCNNSpLightningModel(BaseLightningModule):
+    '''PCCNN-Sp Lightning Model'''
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pccnn = PCCNNSp()
+
+    def forward(
+        self,
+        dmri_in: torch.Tensor,
+        bvec_in: torch.Tensor,
+        bvec_out: torch.Tensor,
+        patch_pos: torch.Tensor,
+    ) -> torch.Tensor:
+        # pylint: disable=arguments-differ
+        return self.pccnn(dmri_in, bvec_in, bvec_out, patch_pos)
