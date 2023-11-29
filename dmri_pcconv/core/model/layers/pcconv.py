@@ -344,12 +344,12 @@ class PCConv(torch.nn.Module):
 
         Args:
             p_ang: Relative output q-space co-ordinate points
-                shape -> (B, q_out, S, k_max, 2)
+                shape -> (B, q_out, S, q_in, 2)
                     where S are the `d` spatial kernel dimensions.
 
         Return:
             p_spatial: Relative spatial co-ordinate points
-                shape -> (B, q_out, S, k_max, d)
+                shape -> (B, q_out, S, q_in, d)
         '''
 
         p_spatial = torch.cartesian_prod(
@@ -361,7 +361,7 @@ class PCConv(torch.nn.Module):
             )
         )
         p_spatial = p_spatial.view(1, 1, *self.kernel, 1, self.nsdims)  # (1, 1, S, 1, d)
-        exp_tuple = (p_ang.size(0), self.q_out) + (-1,) * self.nsdims + (self.k_max, -1)
+        exp_tuple = (p_ang.size(0), self.q_out) + (-1,) * self.nsdims + (self.q_in, -1)
         p_spatial = p_spatial.expand(*exp_tuple)
 
         return p_spatial
