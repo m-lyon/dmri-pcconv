@@ -34,7 +34,6 @@ Listed below are the requirements for this package, these will automatically be 
 * `einops`
 * `nibabel`
 
-
 ## Training
 
 Follow the instructions below on how to train a PCCNN model for dMRI angular super-resolution.
@@ -50,10 +49,13 @@ from dmri_pcconv.core.io import load_nifti
 
 data, _ = load_nifti('/path/to/data.nii.gz')  # Load dMRI data into memory
 data = data.transpose(3, 0, 1, 2)  # Move the angular dimension from last to first
+data = data if data.flags['C_CONTIGUOUS'] else data.copy(order='C')  # Ensure data is in C-contiguous format.
 np.save('/path/to/data.npy', data, allow_pickle=False)  # Save in npy format. Ensure this is on an SSD.
 ```
 
 **N.B.** *Patches are read lazily from disk, therefore it is **highly** recommended to store the training data on an SSD type device, as an HDD will significantly bottleneck the training process when data loading.*
+
+**N.B.** *Numpy data needs to have C-contiguous memory ordering to be used by the `npy-patcher` module during training.*
 
 Additionally, `xmax` values are required prior to training, due to the lazy runtime of data extraction mentioned above. Below is an example of how to extract and save `xmax` values for a given subject.
 
@@ -69,7 +71,7 @@ xmax_dict = TrainingNormaliser.calculate_xmax(dmri, bvals, mask)
 TrainingNormaliser.save_xmax('/path/to/xmax.json', xmax_dict)
 ```
 
-### Training
+### Example
 
 Below is an example of how to train the `PCCNN` model, it uses the `lightning` module `PCCNNLightningModel` and data module `PCCNNDataModule`. The `PCCNN-Bv`, `PCCNN-Sp`, and `PCCNN-Bv-Sp` variants all have their own corresponding model and data module classes.
 
@@ -131,6 +133,8 @@ trainer = pl.Trainer(devices=1, accelerator='gpu', epochs=100)
 # Start training
 trainer.fit(model, data_module)
 ```
+
+**N.B.** *Each training **input** consists of one shell (randomly sampled from the `shells` argument to `QSpaceInfo`) of size `q_in` where `q_in` is randomly sampled from a range between `q_in_min` and `q_in_max`. Each training **output** consists of one shell (again, randomly sampled from the `shells` argument) of size `q_out`.*
 
 ## Prediction
 
